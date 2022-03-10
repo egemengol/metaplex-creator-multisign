@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npx tsc",
+    "status": "yarn build && node ./build/cli.js status",
+    "sign": "yarn build && node ./build/cli.js sign"
   },
   "keywords": [],
   "author": "",
