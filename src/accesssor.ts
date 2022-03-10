@@ -1,14 +1,12 @@
-import { Borsh } from '@metaplex-foundation/mpl-core';
-import { Metadata, MetadataData, MetadataProgram } from '@metaplex-foundation/mpl-token-metadata';
+import { Metadata, MetadataData, SignMetadata } from '@metaplex-foundation/mpl-token-metadata';
 import { NodeWallet } from '@metaplex/js';
-import { sendTransaction } from '@metaplex/js/lib/actions';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import * as web3 from '@solana/web3.js';
-import { PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import * as bs58 from 'bs58';
 
 
-export const creator: web3.Keypair = web3.Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY!))
+export const creator: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY!))
 export const connection = new web3.Connection(web3.clusterApiUrl('mainnet-beta'), 'confirmed');
 export const wallet = new NodeWallet(creator);
 
@@ -57,16 +55,10 @@ export async function getNFTsByCreator(): Promise<{
     const allMints = require("../minters.json");
     const creatorsMintAddresses: string[] = allMints[creator.publicKey.toString()] || []
     const creatorsMints: PublicKey[] = creatorsMintAddresses.map(m => new PublicKey(m));
-    console.log(creatorsMints);
 
     const dataPromises = creatorsMints.map(getMetadataByMint)
     const data = await Promise.all(dataPromises)
     return data.map((d, i) => ({ ...d, mint: creatorsMints[i] }))
-}
-
-class SignMetadataArgs extends Borsh.Data {
-    static readonly SCHEMA = SignMetadataArgs.struct([['instruction', 'u8']]);
-    instruction = 7;
 }
 
 export async function signNFTs(nfts: {
@@ -75,29 +67,15 @@ export async function signNFTs(nfts: {
 }[]): Promise<string> {
     const tx = new web3.Transaction({ feePayer: creator.publicKey })
     for (const nft of nfts) {
-        const inst = new web3.TransactionInstruction({
-            keys: [
-                {
-                    pubkey: nft.metadataPDA,
-                    isSigner: false,
-                    isWritable: true,
-                },
-                {
-                    pubkey: creator.publicKey,
-                    isSigner: true,
-                    isWritable: false,
-                },
-            ],
-            programId: MetadataProgram.PUBKEY,
-            data: SignMetadataArgs.serialize(),
-        })
-        tx.add(inst)
+        const singleSignerTx = new SignMetadata(
+            { feePayer: wallet.publicKey },
+            {
+                metadata: nft.metadataPDA,
+                creator: creator.publicKey,
+            }
+        )
+        tx.add(singleSignerTx.instructions[0])
     }
-
-    return await sendTransaction({
-        connection,
-        signers: [creator],
-        txs: [tx],
-        wallet
-    })
+    //TODO: await in between?
+    return connection.sendTransaction(tx, [creator])
 }
