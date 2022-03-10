@@ -1,6 +1,5 @@
 import { Metadata, MetadataData, SignMetadata } from '@metaplex-foundation/mpl-token-metadata';
 import { NodeWallet } from '@metaplex/js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import * as web3 from '@solana/web3.js';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import * as bs58 from 'bs58';
@@ -19,32 +18,6 @@ async function getMetadataByMint(
         metadataPDA: pda,
         metadataOnchain: onchain,
     };
-}
-
-export async function getNTFsByOwner(owner: PublicKey): Promise<{
-    metadataPDA: web3.PublicKey;
-    metadataOnchain: MetadataData;
-    address: web3.PublicKey;
-    mint: web3.PublicKey;
-}[]> {
-    const tokens = await connection.getParsedTokenAccountsByOwner(owner, {
-        programId: TOKEN_PROGRAM_ID,
-    });
-
-    // initial filter - only tokens with 0 decimals & of which 1 is present in the wallet
-    const basicInfo = tokens.value
-        .filter((t) => {
-            const amount = t.account.data.parsed.info.tokenAmount;
-            return amount.decimals === 0 && amount.uiAmount === 1;
-        })
-        .map((t) => ({
-            address: new PublicKey(t.pubkey),
-            mint: new PublicKey(t.account.data.parsed.info.mint),
-        }));
-
-    const dataPromises = basicInfo.map(bi => getMetadataByMint(bi.mint))
-    const data = await Promise.all(dataPromises)
-    return basicInfo.map((bi, i) => ({ ...bi, ...(data[i]) }))
 }
 
 export async function getNFTsByCreator(): Promise<{
@@ -67,6 +40,8 @@ export async function signNFTs(nfts: {
 }[]): Promise<string> {
     const tx = new web3.Transaction({ feePayer: creator.publicKey })
     for (const nft of nfts) {
+        // This tx includes one instruction for a given sign.
+        // We are extracting the inst into our multi-inst tx.
         const singleSignerTx = new SignMetadata(
             { feePayer: wallet.publicKey },
             {
@@ -76,6 +51,5 @@ export async function signNFTs(nfts: {
         )
         tx.add(singleSignerTx.instructions[0])
     }
-    //TODO: await in between?
     return connection.sendTransaction(tx, [creator])
 }
